@@ -1,19 +1,50 @@
-# Acceder a contenido NSFW en Discord si la cuenta está clasificada como menor de edad.
-**Advertencia:** Este código ya no funciona correctamente. 
+# Discord Age-Gating
 
-Antes de comenzar, hay que notar unos cuantos puntos:
-- Este script está creado con propósitos de educación únicamente, el mal uso del mismo queda a responsabilidad del cliente.
-- El código no es mío, solo está subido de forma informativa.
-- Al ejecutarlo, Discord lanzará un mensaje de que es inseguro y que tu cuenta puede ser robada, puedes leer el código y comprobar qué hace exactamente si tienes dudas.
-- Esto no roba tu cuenta, es código abierto precisamente para que puedas analizar lo que estás ejecutando: y si sabes un poco, puedes ver que es completamente limpio.
+## Research Overview
 
-# ¿Cómo usar el código?
-Debes tener Discord Canary, Discord PTB o Discord Developement para que esto funcione. 
+This repository documents security research into Discord's client-side age-gating mechanism for NSFW content. The analysis examines how Discord's web application validates account age restrictions and identifies the attack surface that existed in older Discord client versions.
 
-Para hacerlo funcionar hay que saber usar el menú de desarrollador (se abre con Control + Shift + I), y abrirlo en la pestaña de _Consola_ para copiar y ejecutarlo en el canal que queráis desbloquear. 
+> **Note:** This research is for educational purposes and technical portfolio documentation. The vulnerability described no longer affects current Discord versions due to subsequent security improvements.
 
-Menú de desarrollador y la consola señalada con una flecha:
-![](https://cdn.discordapp.com/attachments/995109332289065041/1139016985448030258/image.png)
-Texto a copiar y pegar ahí: 
+## Technical Background
+
+Discord restricts access to NSFW-marked channels for accounts registered by users under 18. This research explores the implementation details of this restriction and demonstrates why client-side age validation presents a security weakness.
+
+## Findings
+
+### Vulnerable Architecture
+
+Discord's web client architecture relies on Webpack module bundling, which exposes internal application state through the `window.webpackChunkdiscord_app` global object. User account metadata, including the `nsfwAllowed` flag, is stored in accessible JavaScript objects during runtime.
+
+### Attack Vector
+
+The vulnerability exploits two architectural weaknesses:
+
+1. Module Enumeration: Discord's Webpack configuration allows arbitrary module injection, enabling runtime introspection of bundled modules and their exports.
+
+2. Client-Side State Management: Age-gating flags are stored as mutable properties on user objects in JavaScript memory without server-side validation on channel access.
+
+These can be used to perform a handful of other attacks aswell, such as enabling Discord Staff UI and getting access to experiments that don't require server-side validation.
+
+The proof-of-concept code demonstrates module enumeration via Webpack injection:
+
 ```js
-var findModule=a=>window.webpackChunkdiscord_app.push([[Math.random()],{},b=>{for(const c of Object.keys(b.c).map(a=>b.c[a].exports).filter(a=>a))if(c.default&&c.default[a]!==void 0)return c.default}]);findModule("getCurrentUser").getCurrentUser().nsfwAllowed=!0;```
+var findModule = a => window.webpackChunkdiscord_app.push(
+  [[Math.random()], {}, b => {
+    for (const c of Object.keys(b.c).map(a => b.c[a].exports).filter(a => a))
+      if (c.default && c.default[a] !== void 0) return c.default
+  }]
+);
+
+findModule("getCurrentUser").getCurrentUser().nsfwAllowed = !0;
+```
+
+**How it works:**
+1. Injects a Webpack chunk to intercept module enumeration
+2. Iterates through bundled modules to locate the user session module
+3. Modifies the `nsfwAllowed` flag in the current user object
+4. The modification persists in the client's session state
+
+---
+
+*Portfolio Note: This analysis documents security research conducted during my teenage years. It might not be accurate as I didn't have a good understanding of the underlying technology at that moment.
