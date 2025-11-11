@@ -1,4 +1,4 @@
-# Discord Age-Gating
+# Discord Age-Gating Bypass
 
 ## Research Overview
 
